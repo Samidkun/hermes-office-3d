@@ -1,0 +1,887 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hermes Pixel Office Runtime</title>
+  <style>
+    :root {
+      --bg: #0C0E14;
+      --card-bg: rgba(18, 22, 31, 0.94);
+      --card-border: rgba(255, 255, 255, 0.08);
+      --text-primary: #F8FAFC;
+      --text-secondary: #94A3B8;
+      --text-muted: #64748B;
+      --accent: #38BDF8;
+      --amber: #F59E0B;
+      --cyan: #06B6D4;
+      --emerald: #10B981;
+      --rose: #F43F5E;
+      --purple: #A855F7;
+      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      --font-mono: "JetBrains Mono", "SF Mono", monospace;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+    body {
+      background: var(--bg);
+      color: var(--text-primary);
+      font-family: var(--font-sans);
+      overflow: hidden;
+      width: 100vw;
+      height: 100vh;
+    }
+
+    #office-canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+      cursor: grab;
+    }
+    #office-canvas:active { cursor: grabbing; }
+
+    /* Top HUD */
+    .top-header {
+      position: absolute; top: 14px; left: 14px; z-index: 10;
+      display: flex; align-items: center; gap: 12px;
+      background: var(--card-bg); backdrop-filter: blur(16px);
+      border: 1px solid var(--card-border); padding: 8px 14px; border-radius: 10px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+    }
+    .badge-live {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: 10px; font-family: var(--font-mono); text-transform: uppercase; font-weight: 700;
+      padding: 2px 7px; border-radius: 9999px;
+      background: rgba(16, 185, 129, 0.15); color: var(--emerald); border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+    .badge-live::before {
+      content: ''; width: 5px; height: 5px; background: var(--emerald); border-radius: 50%;
+      animation: pulse 1.8s infinite;
+    }
+    @keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.3; transform: scale(0.7); } }
+    .header-title { font-size: 12px; font-weight: 700; display: flex; align-items: center; gap: 6px; }
+    .header-stat {
+      font-size: 11px; color: var(--text-secondary); font-family: var(--font-mono);
+      border-left: 1px solid var(--card-border); padding-left: 10px;
+    }
+
+    /* Scenario Bar */
+    .scenario-bar {
+      position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%); z-index: 10;
+      display: flex; align-items: center; gap: 6px;
+      background: var(--card-bg); backdrop-filter: blur(18px);
+      border: 1px solid var(--card-border); padding: 5px 10px; border-radius: 9999px;
+      box-shadow: 0 14px 36px rgba(0, 0, 0, 0.6);
+    }
+    .btn-scenario {
+      background: transparent; border: none; color: var(--text-secondary);
+      font-family: var(--font-sans); font-size: 11px; font-weight: 500;
+      padding: 5px 12px; border-radius: 9999px; cursor: pointer; transition: all 0.2s;
+      display: flex; align-items: center; gap: 5px;
+    }
+    .btn-scenario:hover { color: var(--text-primary); background: rgba(255, 255, 255, 0.08); }
+    .btn-scenario.active {
+      background: rgba(56, 189, 248, 0.16); color: var(--accent);
+      border: 1px solid rgba(56, 189, 248, 0.35); font-weight: 600;
+    }
+
+    /* Inspector Card */
+    .inspector-panel {
+      position: absolute; top: 14px; right: 14px; width: 330px; max-height: calc(100vh - 28px);
+      z-index: 10; background: var(--card-bg); backdrop-filter: blur(20px);
+      border: 1px solid var(--card-border); border-radius: 14px; padding: 14px;
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
+      display: flex; flex-direction: column; gap: 10px;
+      transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.25s ease;
+    }
+    .inspector-panel.hidden { transform: translateX(360px); opacity: 0; pointer-events: none; }
+    .inspector-header { display: flex; align-items: flex-start; justify-content: space-between; border-bottom: 1px solid var(--card-border); padding-bottom: 8px; }
+    .inspector-title-row { display: flex; align-items: center; gap: 8px; }
+    .pixel-avatar-badge {
+      width: 36px; height: 36px; border-radius: 8px; background: #1E293B;
+      border: 2px solid rgba(255, 255, 255, 0.1); display: flex; align-items: center; justify-content: center; font-size: 20px;
+    }
+    .inspector-name { font-size: 13px; font-weight: 700; color: var(--text-primary); }
+    .inspector-role { font-size: 10px; color: var(--text-muted); font-family: var(--font-mono); }
+    .btn-close {
+      background: transparent; border: none; color: var(--text-muted); cursor: pointer;
+      font-size: 16px; line-height: 1; padding: 2px 5px; border-radius: 4px;
+    }
+    .btn-close:hover { color: var(--text-primary); background: rgba(255, 255, 255, 0.08); }
+    .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+    .info-box {
+      background: rgba(0, 0, 0, 0.35); border: 1px solid rgba(255, 255, 255, 0.04);
+      padding: 6px 8px; border-radius: 8px;
+    }
+    .info-box-label { font-size: 9px; color: var(--text-muted); text-transform: uppercase; font-family: var(--font-mono); }
+    .info-box-value { font-size: 11px; font-weight: 600; color: var(--text-primary); font-family: var(--font-mono); margin-top: 2px; }
+    .task-container {
+      background: rgba(0, 0, 0, 0.35); border: 1px solid rgba(255, 255, 255, 0.04);
+      padding: 8px; border-radius: 8px;
+    }
+    .task-label { font-size: 9px; color: var(--text-muted); text-transform: uppercase; font-family: var(--font-mono); margin-bottom: 3px; }
+    .task-content { font-size: 11px; line-height: 1.4; color: #CBD5E1; max-height: 55px; overflow-y: auto; }
+    .event-log { display: flex; flex-direction: column; gap: 5px; max-height: 110px; overflow-y: auto; padding-right: 4px; }
+    .event-item {
+      display: flex; align-items: flex-start; gap: 6px; font-size: 10px; font-family: var(--font-mono);
+      color: var(--text-secondary); background: rgba(0, 0, 0, 0.25); padding: 5px 6px; border-radius: 6px;
+      border-left: 2px solid var(--accent);
+    }
+    .event-time { color: var(--text-muted); font-size: 9px; flex-shrink: 0; }
+
+    .cam-reset {
+      position: absolute; bottom: 18px; right: 18px; z-index: 10;
+      background: var(--card-bg); backdrop-filter: blur(14px);
+      border: 1px solid var(--card-border); color: var(--text-secondary);
+      font-family: var(--font-sans); font-size: 10px; padding: 6px 12px;
+      border-radius: 8px; cursor: pointer; display: flex; align-items: center; gap: 5px;
+      transition: all 0.2s;
+    }
+    .cam-reset:hover { color: var(--text-primary); background: rgba(255, 255, 255, 0.12); }
+  </style>
+</head>
+<body>
+  <!-- Top HUD -->
+  <div class="top-header">
+    <div class="badge-live">LIVE PIXEL TELEMETRY</div>
+    <div class="header-title">🏢 Hermes Office</div>
+    <div class="header-stat" id="stat-active">Staff: <strong>4 Devs</strong></div>
+    <div class="header-stat" id="stat-fps">FPS: <strong style="color:var(--emerald)">12 (Power Saving)</strong></div>
+  </div>
+
+  <canvas id="office-canvas"></canvas>
+
+  <!-- Scenario Bar -->
+  <div class="scenario-bar">
+    <button class="btn-scenario active" onclick="setMode('working')">💻 Focus Sprint</button>
+    <button class="btn-scenario" onclick="setMode('standup')">🗣️ Standup Meeting</button>
+    <button class="btn-scenario" onclick="setMode('coffee_break')">☕ Coffee Break</button>
+    <button class="btn-scenario" onclick="setMode('review')">🔍 Pair Review</button>
+    <button class="btn-scenario" onclick="setMode('emergency')">🚨 Prod Incident</button>
+  </div>
+
+  <button class="cam-reset" onclick="resetView()">⟲ Reset</button>
+
+  <!-- Inspector Panel -->
+  <div class="inspector-panel hidden" id="inspector">
+    <div class="inspector-header">
+      <div class="inspector-title-row">
+        <div class="pixel-avatar-badge" id="insp-emoji">👔</div>
+        <div>
+          <div class="inspector-name" id="insp-name">Lead Architect</div>
+          <div class="inspector-role" id="insp-role">Role: Parent Orchestrator</div>
+        </div>
+      </div>
+      <button class="btn-close" onclick="closeInspector()">✕</button>
+    </div>
+
+    <div class="info-grid">
+      <div class="info-box">
+        <div class="info-box-label">Current State</div>
+        <div class="info-box-value" id="insp-status" style="color: var(--cyan)">Coding</div>
+      </div>
+      <div class="info-box">
+        <div class="info-box-label">Zone</div>
+        <div class="info-box-value" id="insp-zone">Desk #1</div>
+      </div>
+      <div class="info-box">
+        <div class="info-box-label">Tool</div>
+        <div class="info-box-value" id="insp-tool">delegate_task</div>
+      </div>
+      <div class="info-box">
+        <div class="info-box-label">Model</div>
+        <div class="info-box-value" id="insp-model">Claude 3.7</div>
+      </div>
+    </div>
+
+    <div class="task-container">
+      <div class="task-label">Assigned Goal / Task</div>
+      <div class="task-content" id="insp-task">
+        Mengoordinasikan subagents untuk audit SSRF, Playwright E2E, dan Livewire CSP.
+      </div>
+    </div>
+
+    <div style="font-size: 9px; color: var(--text-muted); text-transform: uppercase; font-family: var(--font-mono);">
+      Activity Log
+    </div>
+    <div class="event-log" id="insp-log"></div>
+  </div>
+
+  <script>
+    // --- 2.5D ISOMETRIC ENGINE WITH OFFSCREEN BLITTING & 12 FPS THROTTLING ---
+    const canvas = document.getElementById('office-canvas');
+    const ctx = canvas.getContext('2d');
+
+    const TILE_W = 64;
+    const TILE_H = 32;
+    const GRID_SIZE = 14;
+
+    let zoom = 1.35;
+    let panX = 0;
+    let panY = 0;
+    let isDragging = false;
+    let lastMouseX = 0;
+    let lastMouseY = 0;
+
+    // Offscreen Canvas for Static Floor & Furniture Prerendering (Ultra-Fast Blit)
+    const offscreenCanvas = document.createElement('canvas');
+    const offCtx = offscreenCanvas.getContext('2d');
+    let offscreenDirty = true;
+
+    function resizeCanvas() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      offscreenCanvas.width = canvas.width;
+      offscreenCanvas.height = canvas.height;
+      offscreenDirty = true;
+      if (panX === 0 && panY === 0) resetView();
+    }
+    window.addEventListener('resize', resizeCanvas);
+
+    function resetView() {
+      zoom = 1.35;
+      panX = window.innerWidth / 2;
+      panY = window.innerHeight / 4;
+      offscreenDirty = true;
+    }
+
+    function gridToScreen(gx, gy) {
+      return {
+        x: panX + (gx - gy) * (TILE_W / 2) * zoom,
+        y: panY + (gx + gy) * (TILE_H / 2) * zoom
+      };
+    }
+
+    // --- ZONES ---
+    const ZONES = {
+      BOSS_DESK: { gx: 6, gy: 6, name: 'Lead Architect Pod' },
+      SUB1_DESK: { gx: 3, gy: 4, name: 'SecOps Workstation' },
+      SUB2_DESK: { gx: 9, gy: 4, name: 'QA Testbench' },
+      SUB3_DESK: { gx: 6, gy: 9, name: 'Frontend Bay' },
+      MEETING_1: { gx: 10, gy: 10, name: 'War Room #1' },
+      MEETING_2: { gx: 11, gy: 11, name: 'War Room #2' },
+      MEETING_3: { gx: 10, gy: 11, name: 'War Room #3' },
+      MEETING_4: { gx: 11, gy: 10, name: 'War Room #4' },
+      COFFEE_BAR: { gx: 2, gy: 10, name: 'Pantry Espresso' },
+      WATER_COOLER: { gx: 3, gy: 11, name: 'Water Cooler' },
+      SOFA_LOUNGE: { gx: 2, gy: 8, name: 'Lounge Couch' },
+      KANBAN_WALL: { gx: 5, gy: 1, name: 'Kanban Wall' },
+      SERVER_BAY: { gx: 11, gy: 2, name: 'Server Rack Bay' }
+    };
+
+    let agents = [
+      {
+        id: 'parent',
+        name: 'Lead Architect',
+        emoji: '👔',
+        role: 'Parent Orchestrator',
+        model: 'ag/claude-sonnet-4-6',
+        state: 'coding',
+        homeZone: ZONES.BOSS_DESK,
+        gx: 6, gy: 6, targetGx: 6, targetGy: 6,
+        speech: 'Reviewing subagent PR telemetry...',
+        speechTimer: 180,
+        tool: 'delegate_task',
+        hairColor: '#1E293B', shirtColor: '#3B82F6', pantsColor: '#1E293B',
+        accessory: 'tie',
+        logs: [
+          { time: '11:02:10', text: 'Prompt roast passed (score: 11/12)' },
+          { time: '11:02:25', text: 'Dispatched 3 parallel subagent workers' }
+        ]
+      },
+      {
+        id: 'sub-1',
+        name: 'SecOps Chibi',
+        emoji: '🕵️',
+        role: 'Worker: SSRF Auditor',
+        model: 'ag/gemini-3.8-flash',
+        state: 'coding',
+        homeZone: ZONES.SUB1_DESK,
+        gx: 3, gy: 4, targetGx: 3, targetGy: 4,
+        speech: 'Fuzzing WHATWG parser on octal IPs...',
+        speechTimer: 150,
+        tool: 'terminal: phpunit',
+        hairColor: '#64748B', shirtColor: '#06B6D4', pantsColor: '#0F172A',
+        accessory: 'glasses',
+        logs: [
+          { time: '11:02:30', text: 'Running test: SsrfObfuscationTest' },
+          { time: '11:03:12', text: 'Bypass reproduced on 017700000001' }
+        ]
+      },
+      {
+        id: 'sub-2',
+        name: 'QA Chibi',
+        emoji: '🎮',
+        role: 'Worker: Playwright E2E',
+        model: 'ag/gemini-3.8-flash',
+        state: 'coding',
+        homeZone: ZONES.SUB2_DESK,
+        gx: 9, gy: 4, targetGx: 9, targetGy: 4,
+        speech: 'Running browser test journeys...',
+        speechTimer: 190,
+        tool: 'browser_exec',
+        hairColor: '#D97706', shirtColor: '#8B5CF6', pantsColor: '#1E293B',
+        accessory: 'headphones',
+        logs: [
+          { time: '11:02:30', text: 'Booting headless chromium session' },
+          { time: '11:03:45', text: 'Journey 1-6 passed: login cache OK' }
+        ]
+      },
+      {
+        id: 'sub-3',
+        name: 'Frontend Chibi',
+        emoji: '🎨',
+        role: 'Worker: CSP Refactor',
+        model: 'oc-hlv/deepseek-4.1-flash',
+        state: 'done',
+        homeZone: ZONES.SUB3_DESK,
+        gx: 6, gy: 9, targetGx: 6, targetGy: 9,
+        speech: 'CSP refactor complete! All clean 🎉',
+        speechTimer: 200,
+        tool: 'patch',
+        hairColor: '#475569', shirtColor: '#10B981', pantsColor: '#1E293B',
+        accessory: 'none',
+        logs: [
+          { time: '11:02:30', text: 'Targeted ContentSecurityPolicy.php' },
+          { time: '11:03:55', text: 'Injected per-request nonce in middleware' }
+        ]
+      }
+    ];
+
+    const FURNITURE = [
+      { type: 'desk', gx: 6, gy: 6, isBoss: true, color: '#3E2723' },
+      { type: 'desk', gx: 3, gy: 4, isBoss: false, color: '#BA8650' },
+      { type: 'desk', gx: 9, gy: 4, isBoss: false, color: '#BA8650' },
+      { type: 'desk', gx: 6, gy: 9, isBoss: false, color: '#BA8650' },
+      { type: 'meeting_table', gx: 10, gy: 10 },
+      { type: 'server_rack', gx: 11, gy: 2 },
+      { type: 'server_rack', gx: 12, gy: 2 },
+      { type: 'espresso_machine', gx: 2, gy: 10 },
+      { type: 'water_cooler', gx: 3, gy: 11 },
+      { type: 'sofa', gx: 2, gy: 8 },
+      { type: 'whiteboard', gx: 5, gy: 1 },
+      { type: 'plant', gx: 1, gy: 1 },
+      { type: 'plant', gx: 12, gy: 12 },
+      { type: 'plant', gx: 1, gy: 12 }
+    ];
+
+    // --- PRERENDER STATIC BACKGROUND TO OFFSCREEN CANVAS ---
+    function renderStaticRoom(targetCtx) {
+      targetCtx.clearRect(0, 0, offscreenCanvas.width, offscreenCanvas.height);
+
+      // Floor Tiles
+      for (let y = 0; y < GRID_SIZE; y++) {
+        for (let x = 0; x < GRID_SIZE; x++) {
+          const pt = gridToScreen(x, y);
+          const isCarpet = (x >= 4 && x <= 8 && y >= 4 && y <= 8);
+          const isWarRoom = (x >= 9 && y >= 9);
+
+          targetCtx.beginPath();
+          targetCtx.moveTo(pt.x, pt.y);
+          targetCtx.lineTo(pt.x + (TILE_W / 2) * zoom, pt.y + (TILE_H / 2) * zoom);
+          targetCtx.lineTo(pt.x, pt.y + TILE_H * zoom);
+          targetCtx.lineTo(pt.x - (TILE_W / 2) * zoom, pt.y + (TILE_H / 2) * zoom);
+          targetCtx.closePath();
+
+          if (isWarRoom) {
+            targetCtx.fillStyle = (x + y) % 2 === 0 ? '#1E2538' : '#1A2030';
+          } else if (isCarpet) {
+            targetCtx.fillStyle = (x + y) % 2 === 0 ? '#313745' : '#2C3240';
+          } else {
+            targetCtx.fillStyle = (x + y) % 2 === 0 ? '#2A2E38' : '#242832';
+          }
+          targetCtx.fill();
+
+          targetCtx.strokeStyle = 'rgba(255, 255, 255, 0.04)';
+          targetCtx.lineWidth = 1;
+          targetCtx.stroke();
+        }
+      }
+
+      // War Room Glass Divider Wall
+      const gwStart = gridToScreen(9, 8.8);
+      const gwEnd = gridToScreen(13, 8.8);
+      targetCtx.strokeStyle = 'rgba(56, 189, 248, 0.4)';
+      targetCtx.lineWidth = 3 * zoom;
+      targetCtx.beginPath();
+      targetCtx.moveTo(gwStart.x, gwStart.y - 32 * zoom);
+      targetCtx.lineTo(gwEnd.x, gwEnd.y - 32 * zoom);
+      targetCtx.stroke();
+
+      targetCtx.fillStyle = 'rgba(56, 189, 248, 0.1)';
+      targetCtx.beginPath();
+      targetCtx.moveTo(gwStart.x, gwStart.y);
+      targetCtx.lineTo(gwEnd.x, gwEnd.y);
+      targetCtx.lineTo(gwEnd.x, gwEnd.y - 32 * zoom);
+      targetCtx.lineTo(gwStart.x, gwStart.y - 32 * zoom);
+      targetCtx.closePath();
+      targetCtx.fill();
+
+      // Prerender Static Furniture (Desks, Sofa, Whiteboard, Plants)
+      FURNITURE.forEach(item => {
+        drawFurnitureStatic(targetCtx, item);
+      });
+    }
+
+    function drawFurnitureStatic(tCtx, item) {
+      const pt = gridToScreen(item.gx, item.gy);
+      const s = zoom;
+
+      if (item.type === 'desk') {
+        tCtx.fillStyle = item.color;
+        tCtx.fillRect(pt.x - 22 * s, pt.y - 18 * s, 44 * s, 16 * s);
+
+        tCtx.fillStyle = '#111827';
+        tCtx.fillRect(pt.x - 20 * s, pt.y - 2 * s, 4 * s, 18 * s);
+        tCtx.fillRect(pt.x + 16 * s, pt.y - 2 * s, 4 * s, 18 * s);
+
+        if (item.isBoss) {
+          tCtx.fillStyle = '#0F172A';
+          tCtx.fillRect(pt.x - 20 * s, pt.y - 32 * s, 18 * s, 14 * s);
+          tCtx.fillRect(pt.x + 2 * s, pt.y - 32 * s, 18 * s, 14 * s);
+          tCtx.fillStyle = '#06B6D4';
+          tCtx.fillRect(pt.x - 18 * s, pt.y - 30 * s, 14 * s, 10 * s);
+          tCtx.fillRect(pt.x + 4 * s, pt.y - 30 * s, 14 * s, 10 * s);
+        } else {
+          tCtx.fillStyle = '#0F172A';
+          tCtx.fillRect(pt.x - 14 * s, pt.y - 30 * s, 28 * s, 13 * s);
+          tCtx.fillStyle = '#38BDF8';
+          tCtx.fillRect(pt.x - 12 * s, pt.y - 28 * s, 24 * s, 9 * s);
+        }
+
+        tCtx.fillStyle = '#1E293B';
+        tCtx.fillRect(pt.x - 8 * s, pt.y - 12 * s, 16 * s, 5 * s);
+        tCtx.fillStyle = '#EF4444';
+        tCtx.fillRect(pt.x + 12 * s, pt.y - 14 * s, 5 * s, 6 * s);
+        tCtx.fillStyle = '#1E2430';
+        tCtx.fillRect(pt.x - 10 * s, pt.y + 4 * s, 20 * s, 12 * s);
+      }
+      else if (item.type === 'meeting_table') {
+        tCtx.fillStyle = '#BA8650';
+        tCtx.beginPath();
+        tCtx.ellipse(pt.x, pt.y - 10 * s, 32 * s, 18 * s, 0, 0, Math.PI * 2);
+        tCtx.fill();
+        tCtx.strokeStyle = '#854D0E';
+        tCtx.lineWidth = 2 * s;
+        tCtx.stroke();
+
+        tCtx.fillStyle = '#334155';
+        tCtx.fillRect(pt.x - 30 * s, pt.y - 14 * s, 10 * s, 10 * s);
+        tCtx.fillRect(pt.x + 20 * s, pt.y - 14 * s, 10 * s, 10 * s);
+        tCtx.fillRect(pt.x - 5 * s, pt.y - 26 * s, 10 * s, 10 * s);
+        tCtx.fillRect(pt.x - 5 * s, pt.y + 6 * s, 10 * s, 10 * s);
+      }
+      else if (item.type === 'server_rack') {
+        tCtx.fillStyle = '#111827';
+        tCtx.fillRect(pt.x - 14 * s, pt.y - 48 * s, 28 * s, 50 * s);
+        tCtx.strokeStyle = '#374151';
+        tCtx.lineWidth = 2 * s;
+        tCtx.strokeRect(pt.x - 14 * s, pt.y - 48 * s, 28 * s, 50 * s);
+      }
+      else if (item.type === 'espresso_machine') {
+        tCtx.fillStyle = '#1E293B';
+        tCtx.fillRect(pt.x - 16 * s, pt.y - 14 * s, 32 * s, 16 * s);
+        tCtx.fillStyle = '#EF4444';
+        tCtx.fillRect(pt.x - 8 * s, pt.y - 30 * s, 16 * s, 18 * s);
+      }
+      else if (item.type === 'water_cooler') {
+        tCtx.fillStyle = '#E2E8F0';
+        tCtx.fillRect(pt.x - 8 * s, pt.y - 20 * s, 16 * s, 20 * s);
+        tCtx.fillStyle = '#38BDF8';
+        tCtx.beginPath();
+        tCtx.ellipse(pt.x, pt.y - 28 * s, 7 * s, 10 * s, 0, 0, Math.PI * 2);
+        tCtx.fill();
+      }
+      else if (item.type === 'sofa') {
+        tCtx.fillStyle = '#1E293B';
+        tCtx.fillRect(pt.x - 26 * s, pt.y - 12 * s, 52 * s, 22 * s);
+        tCtx.fillStyle = '#334155';
+        tCtx.fillRect(pt.x - 26 * s, pt.y - 24 * s, 52 * s, 14 * s);
+        tCtx.fillStyle = '#F59E0B';
+        tCtx.fillRect(pt.x - 20 * s, pt.y - 16 * s, 8 * s, 8 * s);
+      }
+      else if (item.type === 'whiteboard') {
+        tCtx.fillStyle = '#FFFFFF';
+        tCtx.fillRect(pt.x - 28 * s, pt.y - 45 * s, 56 * s, 34 * s);
+        tCtx.strokeStyle = '#64748B';
+        tCtx.lineWidth = 2 * s;
+        tCtx.strokeRect(pt.x - 28 * s, pt.y - 45 * s, 56 * s, 34 * s);
+        const colors = ['#FBBF24', '#38BDF8', '#34D399', '#F472B6'];
+        for (let p = 0; p < 8; p++) {
+          tCtx.fillStyle = colors[p % 4];
+          tCtx.fillRect(pt.x - 22 * s + (p % 4) * 11 * s, pt.y - 40 * s + Math.floor(p / 4) * 12 * s, 6 * s, 6 * s);
+        }
+      }
+      else if (item.type === 'plant') {
+        tCtx.fillStyle = '#854D0E';
+        tCtx.fillRect(pt.x - 8 * s, pt.y - 8 * s, 16 * s, 12 * s);
+        tCtx.fillStyle = '#16A34A';
+        tCtx.beginPath();
+        tCtx.ellipse(pt.x - 4 * s, pt.y - 20 * s, 10 * s, 12 * s, -0.2, 0, Math.PI * 2);
+        tCtx.ellipse(pt.x + 4 * s, pt.y - 24 * s, 12 * s, 14 * s, 0.2, 0, Math.PI * 2);
+        tCtx.fill();
+      }
+    }
+
+    // --- AGENT PIXEL RENDERING ---
+    function drawPixelAgent(agent, frame) {
+      const pt = gridToScreen(agent.gx, agent.gy);
+      const s = zoom;
+
+      // Status Aura Disc
+      ctx.beginPath();
+      ctx.ellipse(pt.x, pt.y, 14 * s, 7 * s, 0, 0, Math.PI * 2);
+      ctx.fillStyle = getStatusColor(agent.state, 0.35);
+      ctx.fill();
+
+      const isMoving = Math.abs(agent.gx - agent.targetGx) > 0.05 || Math.abs(agent.gy - agent.targetGy) > 0.05;
+      const bob = isMoving ? Math.sin(frame * 0.4) * 2 * s : 0;
+      const cy = pt.y - 24 * s + bob;
+
+      // Shoes
+      const legWalk = isMoving ? Math.sin(frame * 0.4) * 3 * s : 0;
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(pt.x - 6 * s + legWalk, cy + 20 * s, 5 * s, 4 * s);
+      ctx.fillRect(pt.x + 1 * s - legWalk, cy + 20 * s, 5 * s, 4 * s);
+
+      // Pants
+      ctx.fillStyle = agent.pantsColor;
+      ctx.fillRect(pt.x - 6 * s, cy + 12 * s, 12 * s, 8 * s);
+
+      // Shirt / Hoodie
+      ctx.fillStyle = agent.shirtColor;
+      ctx.fillRect(pt.x - 8 * s, cy + 2 * s, 16 * s, 11 * s);
+
+      // Accessories
+      if (agent.accessory === 'tie') {
+        ctx.fillStyle = '#EF4444';
+        ctx.fillRect(pt.x - 1 * s, cy + 3 * s, 3 * s, 7 * s);
+      } else {
+        ctx.fillStyle = '#38BDF8';
+        ctx.fillRect(pt.x - 3 * s, cy + 2 * s, 6 * s, 2 * s);
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(pt.x - 2 * s, cy + 6 * s, 4 * s, 4 * s);
+      }
+
+      // Hands
+      ctx.fillStyle = '#FFDFC4';
+      if (agent.state === 'coding') {
+        const typeOffset = Math.sin(frame * 0.8) * 2 * s;
+        ctx.fillRect(pt.x - 8 * s + typeOffset, cy + 8 * s, 3 * s, 4 * s);
+        ctx.fillRect(pt.x + 5 * s - typeOffset, cy + 8 * s, 3 * s, 4 * s);
+      } else if (agent.state === 'idle_coffee') {
+        ctx.fillRect(pt.x - 5 * s, cy + 6 * s, 3 * s, 3 * s);
+        ctx.fillStyle = '#EF4444';
+        ctx.fillRect(pt.x - 2 * s, cy + 5 * s, 4 * s, 5 * s);
+      } else if (agent.state === 'done') {
+        ctx.fillRect(pt.x - 10 * s, cy - 2 * s, 3 * s, 5 * s);
+        ctx.fillRect(pt.x + 7 * s, cy - 2 * s, 3 * s, 5 * s);
+      } else {
+        ctx.fillRect(pt.x - 9 * s, cy + 6 * s, 3 * s, 4 * s);
+        ctx.fillRect(pt.x + 6 * s, cy + 6 * s, 3 * s, 4 * s);
+      }
+
+      // Head & Face
+      ctx.fillStyle = '#FFDFC4';
+      ctx.fillRect(pt.x - 7 * s, cy - 10 * s, 14 * s, 12 * s);
+
+      // Eyes
+      ctx.fillStyle = '#0F172A';
+      if (agent.state === 'error') {
+        ctx.fillRect(pt.x - 5 * s, cy - 6 * s, 3 * s, 3 * s);
+        ctx.fillRect(pt.x + 2 * s, cy - 6 * s, 3 * s, 3 * s);
+      } else {
+        ctx.fillRect(pt.x - 4 * s, cy - 6 * s, 2 * s, 3 * s);
+        ctx.fillRect(pt.x + 2 * s, cy - 6 * s, 2 * s, 3 * s);
+      }
+
+      // Hair
+      ctx.fillStyle = agent.hairColor;
+      ctx.fillRect(pt.x - 8 * s, cy - 14 * s, 16 * s, 5 * s);
+      ctx.fillRect(pt.x - 8 * s, cy - 10 * s, 3 * s, 5 * s);
+      ctx.fillRect(pt.x + 5 * s, cy - 10 * s, 3 * s, 5 * s);
+
+      if (agent.accessory === 'headphones') {
+        ctx.fillStyle = '#38BDF8';
+        ctx.fillRect(pt.x - 10 * s, cy - 8 * s, 3 * s, 6 * s);
+        ctx.fillRect(pt.x + 7 * s, cy - 8 * s, 3 * s, 6 * s);
+        ctx.fillStyle = '#0F172A';
+        ctx.fillRect(pt.x - 8 * s, cy - 15 * s, 16 * s, 2 * s);
+      }
+
+      // Live Speech Bubble
+      if (agent.speech && agent.speechTimer > 0) {
+        drawSpeechBubble(pt.x, cy - 18 * s, agent.speech);
+      }
+    }
+
+    function drawSpeechBubble(bx, by, text) {
+      const s = zoom;
+      ctx.font = `bold ${Math.round(10 * s)}px var(--font-sans)`;
+      const textW = ctx.measureText(text).width;
+      const pad = 8 * s;
+      const bw = textW + pad * 2;
+      const bh = 18 * s;
+
+      ctx.fillStyle = '#FFFFFF';
+      ctx.beginPath();
+      ctx.roundRect(bx - bw / 2, by - bh, bw, bh, 5 * s);
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.moveTo(bx - 3 * s, by);
+      ctx.lineTo(bx + 3 * s, by);
+      ctx.lineTo(bx, by + 4 * s);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.fillStyle = '#0F172A';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(text, bx, by - bh / 2);
+    }
+
+    function getStatusColor(state, alpha = 1) {
+      if (state === 'coding') return `rgba(6, 182, 212, ${alpha})`;
+      if (state === 'thinking') return `rgba(245, 158, 11, ${alpha})`;
+      if (state === 'meeting') return `rgba(168, 85, 247, ${alpha})`;
+      if (state === 'done') return `rgba(16, 185, 129, ${alpha})`;
+      if (state === 'error') return `rgba(244, 63, 94, ${alpha})`;
+      return `rgba(100, 116, 139, ${alpha})`;
+    }
+
+    // --- 12 FPS THROTTLED RENDER LOOP WITH BLIT & AUTO-SLEEP ---
+    let frame = 0;
+    let lastTime = 0;
+    const TARGET_FPS = 12;
+    const FRAME_INTERVAL = 1000 / TARGET_FPS; // ~83.3ms
+    let animId = null;
+
+    function renderLoop(currentTime) {
+      animId = requestAnimationFrame(renderLoop);
+
+      // Throttle strictly to 12 FPS (Power Saving, 0% GPU)
+      if (currentTime - lastTime < FRAME_INTERVAL) return;
+      lastTime = currentTime;
+      frame++;
+
+      // Rebuild offscreen buffer if panned/zoomed
+      if (offscreenDirty) {
+        renderStaticRoom(offCtx);
+        offscreenDirty = false;
+      }
+
+      // Step 1: Blit static background from offscreen buffer in a single copy call!
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(offscreenCanvas, 0, 0);
+
+      // Step 2: Animated Server LEDs & Coffee Steam
+      const s = zoom;
+      for (let l = 0; l < 8; l++) {
+        const pt1 = gridToScreen(11, 2);
+        const blink1 = (frame + l * 7) % 15 < 7;
+        ctx.fillStyle = blink1 ? '#10B981' : '#06B6D4';
+        ctx.fillRect(pt1.x - 10 * s, pt1.y - 44 * s + l * 6 * s, 4 * s, 3 * s);
+      }
+      const ptSteam = gridToScreen(2, 10);
+      const steamY = (frame % 15) * 0.8 * s;
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+      ctx.fillRect(ptSteam.x - 2 * s, ptSteam.y - 34 * s - steamY, 3 * s, 4 * s);
+
+      // Step 3: Depth Sort Moving Agents & Render
+      agents.sort((a, b) => (a.gx + a.gy) - (b.gx + b.gy));
+
+      agents.forEach(a => {
+        const dx = a.targetGx - a.gx;
+        const dy = a.targetGy - a.gy;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        if (dist > 0.05) {
+          const speed = 0.07;
+          a.gx += (dx / dist) * Math.min(speed, dist);
+          a.gy += (dy / dist) * Math.min(speed, dist);
+        } else {
+          a.gx = a.targetGx;
+          a.gy = a.targetGy;
+        }
+
+        if (a.speechTimer > 0) a.speechTimer--;
+        drawPixelAgent(a, frame);
+      });
+    }
+
+    // Auto-Sleep on Hidden Tab (0% CPU/GPU)
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) {
+        if (animId) cancelAnimationFrame(animId);
+        animId = null;
+      } else {
+        if (!animId) {
+          lastTime = performance.now();
+          animId = requestAnimationFrame(renderLoop);
+        }
+      }
+    });
+
+    // --- MOUSE PAN & ZOOM ---
+    canvas.addEventListener('mousedown', e => {
+      isDragging = true;
+      lastMouseX = e.clientX;
+      lastMouseY = e.clientY;
+    });
+
+    window.addEventListener('mouseup', () => { isDragging = false; });
+
+    canvas.addEventListener('mousemove', e => {
+      if (isDragging) {
+        panX += e.clientX - lastMouseX;
+        panY += e.clientY - lastMouseY;
+        lastMouseX = e.clientX;
+        lastMouseY = e.clientY;
+        offscreenDirty = true;
+      }
+    });
+
+    canvas.addEventListener('wheel', e => {
+      e.preventDefault();
+      const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
+      zoom = Math.max(0.8, Math.min(2.5, zoom * zoomFactor));
+      offscreenDirty = true;
+    });
+
+    // Click on Agent -> Inspect
+    canvas.addEventListener('click', e => {
+      for (let a of agents) {
+        const pt = gridToScreen(a.gx, a.gy);
+        const hitDist = Math.hypot(e.clientX - pt.x, e.clientY - (pt.y - 18 * zoom));
+        if (hitDist < 26 * zoom) {
+          selectAgent(a);
+          // Emit postMessage to parent host if running in iframe
+          if (window.parent && window.parent !== window) {
+            window.parent.postMessage({ type: 'AGENT_CLICK', payload: a }, '*');
+          }
+          return;
+        }
+      }
+    });
+
+    function selectAgent(agent) {
+      document.getElementById('insp-name').textContent = agent.name;
+      document.getElementById('insp-role').textContent = `Role: ${agent.role}`;
+      document.getElementById('insp-emoji').textContent = agent.emoji || '🤖';
+      const statusEl = document.getElementById('insp-status');
+      statusEl.textContent = agent.state.toUpperCase();
+      statusEl.style.color = getStatusColor(agent.state);
+      document.getElementById('insp-zone').textContent = agent.homeZone.name;
+      document.getElementById('insp-model').textContent = agent.model;
+      document.getElementById('insp-tool').textContent = agent.tool;
+      document.getElementById('insp-task').textContent = agent.speech;
+
+      const logContainer = document.getElementById('insp-log');
+      logContainer.innerHTML = '';
+      agent.logs.forEach(log => {
+        const item = document.createElement('div');
+        item.className = 'event-item';
+        item.innerHTML = `<span class="event-time">${log.time}</span><span>${log.text}</span>`;
+        logContainer.appendChild(item);
+      });
+
+      document.getElementById('inspector').classList.remove('hidden');
+
+      const pt = gridToScreen(agent.gx, agent.gy);
+      panX += (window.innerWidth / 2 - pt.x) * 0.5;
+      panY += (window.innerHeight / 2 - pt.y) * 0.5;
+      offscreenDirty = true;
+    }
+
+    function closeInspector() {
+      document.getElementById('inspector').classList.add('hidden');
+    }
+
+    // --- ROLEPLAY MODES & TELEMETRY BRIDGE ---
+    function setMode(mode) {
+      document.querySelectorAll('.btn-scenario').forEach(b => b.classList.remove('active'));
+      if (event && event.target) event.target.classList.add('active');
+
+      if (mode === 'working') {
+        agents[0].targetGx = ZONES.BOSS_DESK.gx; agents[0].targetGy = ZONES.BOSS_DESK.gy; agents[0].state = 'coding'; agents[0].speech = 'Reviewing subagent PR telemetry...';
+        agents[1].targetGx = ZONES.SUB1_DESK.gx; agents[1].targetGy = ZONES.SUB1_DESK.gy; agents[1].state = 'coding'; agents[1].speech = 'Fuzzing WHATWG parser on octal IPs...';
+        agents[2].targetGx = ZONES.SUB2_DESK.gx; agents[2].targetGy = ZONES.SUB2_DESK.gy; agents[2].state = 'coding'; agents[2].speech = 'Running Playwright test journeys...';
+        agents[3].targetGx = ZONES.SUB3_DESK.gx; agents[3].targetGy = ZONES.SUB3_DESK.gy; agents[3].state = 'coding'; agents[3].speech = 'Injecting CSP nonces in layout.blade...';
+      }
+      else if (mode === 'standup') {
+        agents[0].targetGx = ZONES.MEETING_1.gx; agents[0].targetGy = ZONES.MEETING_1.gy; agents[0].state = 'meeting'; agents[0].speech = 'Team, what is the blocker on SSRF?';
+        agents[1].targetGx = ZONES.MEETING_2.gx; agents[1].targetGy = ZONES.MEETING_2.gy; agents[1].state = 'meeting'; agents[1].speech = 'Octal loopback 017700000001 reproduced!';
+        agents[2].targetGx = ZONES.MEETING_3.gx; agents[2].targetGy = ZONES.MEETING_3.gy; agents[2].state = 'meeting'; agents[2].speech = 'E2E catches 429 login throttle issue.';
+        agents[3].targetGx = ZONES.MEETING_4.gx; agents[3].targetGy = ZONES.MEETING_4.gy; agents[3].state = 'meeting'; agents[3].speech = 'CSP safe mode confirmed on Livewire 4!';
+      }
+      else if (mode === 'coffee_break') {
+        agents[0].targetGx = ZONES.COFFEE_BAR.gx; agents[0].targetGy = ZONES.COFFEE_BAR.gy; agents[0].state = 'idle_coffee'; agents[0].speech = 'Brewing double espresso ☕';
+        agents[1].targetGx = ZONES.WATER_COOLER.gx; agents[1].targetGy = ZONES.WATER_COOLER.gy; agents[1].state = 'idle_coffee'; agents[1].speech = 'Refilling water bottle 💧';
+        agents[2].targetGx = ZONES.SOFA_LOUNGE.gx; agents[2].targetGy = ZONES.SOFA_LOUNGE.gy; agents[2].state = 'idle_coffee'; agents[2].speech = 'Chilling on sofa, checking Discord 📱';
+        agents[3].targetGx = ZONES.KANBAN_WALL.gx; agents[3].targetGy = ZONES.KANBAN_WALL.gy; agents[3].state = 'idle_coffee'; agents[3].speech = 'Moving sprint ticket to Done! 📋';
+      }
+      else if (mode === 'review') {
+        agents[0].targetGx = ZONES.BOSS_DESK.gx; agents[0].targetGy = ZONES.BOSS_DESK.gy; agents[0].state = 'coding'; agents[0].speech = 'Reviewing architecture drift gate...';
+        agents[1].targetGx = ZONES.SUB1_DESK.gx; agents[1].targetGy = ZONES.SUB1_DESK.gy; agents[1].state = 'coding'; agents[1].speech = 'Explaining octal parser fix to QA.';
+        agents[2].targetGx = 4; agents[2].targetGy = 4; agents[2].state = 'meeting'; agents[2].speech = 'Looking at your PR diff, looks solid! 👍';
+        agents[3].targetGx = ZONES.SUB3_DESK.gx; agents[3].targetGy = ZONES.SUB3_DESK.gy; agents[3].state = 'coding'; agents[3].speech = 'Refactoring CSS Tailwind classes.';
+      }
+      else if (mode === 'emergency') {
+        agents[0].targetGx = ZONES.BOSS_DESK.gx; agents[0].targetGy = ZONES.BOSS_DESK.gy; agents[0].state = 'error'; agents[0].speech = '🚨 PROD DOWN! Who pushed to main?!';
+        agents[1].targetGx = ZONES.SERVER_BAY.gx; agents[1].targetGy = ZONES.SERVER_BAY.gy; agents[1].state = 'error'; agents[1].speech = 'Checking server blade logs!';
+        agents[2].targetGx = ZONES.SUB2_DESK.gx; agents[2].targetGy = ZONES.SUB2_DESK.gy; agents[2].state = 'error'; agents[2].speech = 'E2E pipeline red: exit code 1';
+        agents[3].targetGx = ZONES.SUB3_DESK.gx; agents[3].targetGy = ZONES.SUB3_DESK.gy; agents[3].state = 'error'; agents[3].speech = 'Reverting commit eb9d8b8!';
+      }
+      agents.forEach(a => a.speechTimer = 220);
+    }
+
+    // --- RECEIVE LIVE MESSAGES FROM HERMES DESKTOP PLUGIN ---
+    window.addEventListener('message', event => {
+      const msg = event.data;
+      if (!msg || !msg.type) return;
+
+      if (msg.type === 'HERMES_EVENT' || msg.type === 'AGENT_UPDATE') {
+        const payload = msg.payload;
+        const existing = agents.find(a => a.id === payload.agentId);
+        if (existing) {
+          if (payload.state) existing.state = payload.state;
+          if (payload.speech) { existing.speech = payload.speech; existing.speechTimer = 200; }
+          if (payload.tool) existing.tool = payload.tool;
+          if (payload.model) existing.model = payload.model;
+          if (payload.logs) existing.logs = payload.logs;
+        } else if (payload.role === 'worker') {
+          // Dynamically spawn new subagent at free desk!
+          const newIdx = agents.length;
+          agents.push({
+            id: payload.agentId,
+            name: payload.name || `Worker #${newIdx}`,
+            emoji: '⚡',
+            role: `Worker #${newIdx}`,
+            model: payload.model || 'ag/gemini-3.8-flash',
+            state: payload.state || 'coding',
+            homeZone: { gx: 3, gy: 8, name: `Desk #${newIdx}` },
+            gx: 12, gy: 12, targetGx: 3, targetGy: 8,
+            speech: payload.speech || 'New task assigned! Starting work...',
+            speechTimer: 200,
+            tool: payload.tool || 'terminal',
+            hairColor: '#D97706', shirtColor: '#F59E0B', pantsColor: '#1E293B',
+            accessory: 'none',
+            logs: payload.logs || [{ time: new Date().toLocaleTimeString(), text: 'Agent spawned via delegate_task' }]
+          });
+        }
+      } else if (msg.type === 'SET_SCENARIO') {
+        setMode(msg.payload);
+      }
+    });
+
+    // Start
+    resizeCanvas();
+    lastTime = performance.now();
+    animId = requestAnimationFrame(renderLoop);
+  </script>
+</body>
+</html>

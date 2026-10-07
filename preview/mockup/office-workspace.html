@@ -1,0 +1,891 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hermes 2.5D Pixel Art Agent Office</title>
+  <style>
+    :root {
+      --bg: #0C0E14;
+      --card-bg: rgba(18, 22, 31, 0.92);
+      --card-border: rgba(255, 255, 255, 0.08);
+      --text-primary: #F8FAFC;
+      --text-secondary: #94A3B8;
+      --text-muted: #64748B;
+      --accent: #38BDF8;
+      --amber: #F59E0B;
+      --cyan: #06B6D4;
+      --emerald: #10B981;
+      --rose: #F43F5E;
+      --purple: #A855F7;
+      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      --font-mono: "JetBrains Mono", "SF Mono", monospace;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+    body {
+      background: #0C0E14;
+      color: var(--text-primary);
+      font-family: var(--font-sans);
+      overflow: hidden;
+      width: 100vw;
+      height: 100vh;
+    }
+
+    #office-canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+      cursor: grab;
+    }
+    #office-canvas:active { cursor: grabbing; }
+
+    /* Top HUD */
+    .top-header {
+      position: absolute; top: 16px; left: 16px; z-index: 10;
+      display: flex; align-items: center; gap: 14px;
+      background: var(--card-bg); backdrop-filter: blur(16px);
+      border: 1px solid var(--card-border); padding: 8px 16px; border-radius: 12px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    }
+    .badge-live {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: 11px; font-family: var(--font-mono); text-transform: uppercase; font-weight: 700;
+      padding: 2px 8px; border-radius: 9999px;
+      background: rgba(16, 185, 129, 0.15); color: var(--emerald); border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+    .badge-live::before {
+      content: ''; width: 6px; height: 6px; background: var(--emerald); border-radius: 50%;
+      animation: pulse 1.8s infinite;
+    }
+    @keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.3; transform: scale(0.7); } }
+    .header-title { font-size: 13px; font-weight: 700; display: flex; align-items: center; gap: 6px; }
+    .header-stat {
+      font-size: 12px; color: var(--text-secondary); font-family: var(--font-mono);
+      border-left: 1px solid var(--card-border); padding-left: 12px;
+    }
+
+    /* Scenario Bar */
+    .scenario-bar {
+      position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 10;
+      display: flex; align-items: center; gap: 6px;
+      background: var(--card-bg); backdrop-filter: blur(18px);
+      border: 1px solid var(--card-border); padding: 6px 12px; border-radius: 9999px;
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
+    }
+    .btn-scenario {
+      background: transparent; border: none; color: var(--text-secondary);
+      font-family: var(--font-sans); font-size: 12px; font-weight: 500;
+      padding: 6px 14px; border-radius: 9999px; cursor: pointer; transition: all 0.2s;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .btn-scenario:hover { color: var(--text-primary); background: rgba(255, 255, 255, 0.08); }
+    .btn-scenario.active {
+      background: rgba(56, 189, 248, 0.16); color: var(--accent);
+      border: 1px solid rgba(56, 189, 248, 0.35); font-weight: 600;
+    }
+    .btn-action {
+      background: rgba(255, 255, 255, 0.08); border: 1px solid var(--card-border);
+      color: var(--text-primary); font-family: var(--font-sans); font-size: 12px; font-weight: 600;
+      padding: 6px 14px; border-radius: 9999px; cursor: pointer; transition: all 0.2s;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .btn-action:hover { background: rgba(255, 255, 255, 0.16); }
+
+    /* Inspector Card */
+    .inspector-panel {
+      position: absolute; top: 16px; right: 16px; width: 350px; max-height: calc(100vh - 32px);
+      z-index: 10; background: var(--card-bg); backdrop-filter: blur(20px);
+      border: 1px solid var(--card-border); border-radius: 16px; padding: 16px;
+      box-shadow: 0 20px 45px rgba(0, 0, 0, 0.6);
+      display: flex; flex-direction: column; gap: 12px;
+      transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease;
+    }
+    .inspector-panel.hidden { transform: translateX(390px); opacity: 0; pointer-events: none; }
+    .inspector-header { display: flex; align-items: flex-start; justify-content: space-between; border-bottom: 1px solid var(--card-border); padding-bottom: 10px; }
+    .inspector-title-row { display: flex; align-items: center; gap: 10px; }
+    .pixel-avatar-badge {
+      width: 40px; height: 40px; border-radius: 8px; background: #1E293B;
+      border: 2px solid rgba(255, 255, 255, 0.1); display: flex; align-items: center; justify-content: center; font-size: 22px;
+    }
+    .inspector-name { font-size: 14px; font-weight: 700; color: var(--text-primary); }
+    .inspector-role { font-size: 11px; color: var(--text-muted); font-family: var(--font-mono); margin-top: 1px; }
+    .btn-close {
+      background: transparent; border: none; color: var(--text-muted); cursor: pointer;
+      font-size: 18px; line-height: 1; padding: 4px 6px; border-radius: 6px;
+    }
+    .btn-close:hover { color: var(--text-primary); background: rgba(255, 255, 255, 0.08); }
+    .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .info-box {
+      background: rgba(0, 0, 0, 0.35); border: 1px solid rgba(255, 255, 255, 0.04);
+      padding: 8px 10px; border-radius: 10px;
+    }
+    .info-box-label { font-size: 10px; color: var(--text-muted); text-transform: uppercase; font-family: var(--font-mono); }
+    .info-box-value { font-size: 12px; font-weight: 600; color: var(--text-primary); font-family: var(--font-mono); margin-top: 2px; }
+    .task-container {
+      background: rgba(0, 0, 0, 0.35); border: 1px solid rgba(255, 255, 255, 0.04);
+      padding: 10px; border-radius: 10px;
+    }
+    .task-label { font-size: 10px; color: var(--text-muted); text-transform: uppercase; font-family: var(--font-mono); margin-bottom: 4px; }
+    .task-content { font-size: 12px; line-height: 1.45; color: #CBD5E1; max-height: 65px; overflow-y: auto; }
+    .event-log { display: flex; flex-direction: column; gap: 6px; max-height: 130px; overflow-y: auto; padding-right: 4px; }
+    .event-item {
+      display: flex; align-items: flex-start; gap: 8px; font-size: 11px; font-family: var(--font-mono);
+      color: var(--text-secondary); background: rgba(0, 0, 0, 0.25); padding: 6px 8px; border-radius: 6px;
+      border-left: 2px solid var(--accent);
+    }
+    .event-time { color: var(--text-muted); font-size: 10px; flex-shrink: 0; }
+
+    .cam-reset {
+      position: absolute; bottom: 20px; right: 20px; z-index: 10;
+      background: var(--card-bg); backdrop-filter: blur(14px);
+      border: 1px solid var(--card-border); color: var(--text-secondary);
+      font-family: var(--font-sans); font-size: 11px; padding: 8px 14px;
+      border-radius: 10px; cursor: pointer; display: flex; align-items: center; gap: 6px;
+      transition: all 0.2s; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+    }
+    .cam-reset:hover { color: var(--text-primary); background: rgba(255, 255, 255, 0.12); }
+
+    .hint-orbit {
+      position: absolute; bottom: 24px; left: 20px; z-index: 10;
+      font-size: 11px; color: var(--text-muted); font-family: var(--font-mono); pointer-events: none;
+      background: rgba(0, 0, 0, 0.4); padding: 5px 10px; border-radius: 8px;
+    }
+  </style>
+</head>
+<body>
+  <!-- Top HUD -->
+  <div class="top-header">
+    <div class="badge-live">PIXEL SIMULATOR</div>
+    <div class="header-title">🏢 Hermes Retro Agent Office</div>
+    <div class="header-stat" id="stat-active">Staff: <strong>4 Pixel Devs</strong></div>
+    <div class="header-stat" id="stat-status">Status: <strong style="color:var(--accent)">Sprint In Progress</strong></div>
+  </div>
+
+  <div class="hint-orbit">🖱️ Drag to Pan · Scroll to Zoom · Click Pixel Dev to Track</div>
+  <canvas id="office-canvas"></canvas>
+
+  <!-- Scenario / Roleplay Bar -->
+  <div class="scenario-bar">
+    <button class="btn-scenario active" onclick="setMode('working')">💻 Focus Sprint</button>
+    <button class="btn-scenario" onclick="setMode('standup')">🗣️ War Room Standup</button>
+    <button class="btn-scenario" onclick="setMode('coffee_break')">☕ Pantry & Coffee</button>
+    <button class="btn-scenario" onclick="setMode('review')">🔍 Pair Review Walk</button>
+    <button class="btn-scenario" onclick="setMode('emergency')">🚨 Production Incident!</button>
+    <button class="btn-action" onclick="hireNewAgent()">+ Hire Agent</button>
+  </div>
+
+  <button class="cam-reset" onclick="resetView()">⟲ Reset View</button>
+
+  <!-- Inspector Panel -->
+  <div class="inspector-panel hidden" id="inspector">
+    <div class="inspector-header">
+      <div class="inspector-title-row">
+        <div class="pixel-avatar-badge" id="insp-emoji">👔</div>
+        <div>
+          <div class="inspector-name" id="insp-name">Lead Architect</div>
+          <div class="inspector-role" id="insp-role">Role: Parent Orchestrator</div>
+        </div>
+      </div>
+      <button class="btn-close" onclick="closeInspector()">✕</button>
+    </div>
+
+    <div class="info-grid">
+      <div class="info-box">
+        <div class="info-box-label">Current State</div>
+        <div class="info-box-value" id="insp-status" style="color: var(--cyan)">Coding</div>
+      </div>
+      <div class="info-box">
+        <div class="info-box-label">Zone Location</div>
+        <div class="info-box-value" id="insp-zone">Desk #1 (Boss)</div>
+      </div>
+      <div class="info-box">
+        <div class="info-box-label">Tool / Action</div>
+        <div class="info-box-value" id="insp-tool">delegate_task</div>
+      </div>
+      <div class="info-box">
+        <div class="info-box-label">LLM Model</div>
+        <div class="info-box-value" id="insp-model">Claude 3.7</div>
+      </div>
+    </div>
+
+    <div class="task-container">
+      <div class="task-label">Current Assigned Goal</div>
+      <div class="task-content" id="insp-task">
+        Mengoordinasikan 3 parallel subagents untuk audit SSRF, Playwright E2E, dan Livewire CSP.
+      </div>
+    </div>
+
+    <div style="font-size: 10px; color: var(--text-muted); text-transform: uppercase; font-family: var(--font-mono); margin-top: 2px;">
+      Recent Activity & Logs
+    </div>
+    <div class="event-log" id="insp-log"></div>
+  </div>
+
+  <script>
+    // --- 2.5D ISOMETRIC ENGINE & SPRITE ARCHITECTURE ---
+    const canvas = document.getElementById('office-canvas');
+    const ctx = canvas.getContext('2d');
+
+    const TILE_W = 64;
+    const TILE_H = 32;
+    const GRID_SIZE = 14;
+
+    let zoom = 1.35;
+    let panX = 0;
+    let panY = 0;
+    let isDragging = false;
+    let lastMouseX = 0;
+    let lastMouseY = 0;
+    let selectedAgent = null;
+
+    function resizeCanvas() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      if (panX === 0 && panY === 0) {
+        resetView();
+      }
+    }
+    window.addEventListener('resize', resizeCanvas);
+
+    function resetView() {
+      zoom = 1.35;
+      panX = window.innerWidth / 2;
+      panY = window.innerHeight / 4;
+    }
+
+    function gridToScreen(gx, gy) {
+      return {
+        x: panX + (gx - gy) * (TILE_W / 2) * zoom,
+        y: panY + (gx + gy) * (TILE_H / 2) * zoom
+      };
+    }
+
+    const ZONES = {
+      BOSS_DESK: { gx: 6, gy: 6, name: 'Lead Architect Workstation' },
+      SUB1_DESK: { gx: 3, gy: 4, name: 'SecOps Workstation' },
+      SUB2_DESK: { gx: 9, gy: 4, name: 'QA Testbench' },
+      SUB3_DESK: { gx: 6, gy: 9, name: 'Frontend Bay' },
+      MEETING_TABLE_1: { gx: 10, gy: 10, name: 'War Room: Seat 1' },
+      MEETING_TABLE_2: { gx: 11, gy: 11, name: 'War Room: Seat 2' },
+      MEETING_TABLE_3: { gx: 10, gy: 11, name: 'War Room: Seat 3' },
+      MEETING_TABLE_4: { gx: 11, gy: 10, name: 'War Room: Seat 4' },
+      COFFEE_BAR: { gx: 2, gy: 10, name: 'Pantry Espresso Machine' },
+      WATER_COOLER: { gx: 3, gy: 11, name: 'Water Cooler Dispenser' },
+      SOFA_LOUNGE: { gx: 2, gy: 8, name: 'Breakout Lounge Couch' },
+      KANBAN_WALL: { gx: 5, gy: 1, name: 'Sprint Kanban Whiteboard' },
+      SERVER_BAY: { gx: 11, gy: 2, name: 'DevOps Server Rack' }
+    };
+
+    let agents = [
+      {
+        id: 'parent',
+        name: 'Lead Architect',
+        emoji: '👔',
+        role: 'Parent Orchestrator',
+        model: 'ag/claude-sonnet-4-6',
+        state: 'coding',
+        homeZone: ZONES.BOSS_DESK,
+        gx: 6, gy: 6,
+        targetGx: 6, targetGy: 6,
+        speech: 'Reviewing subagent PR telemetry...',
+        speechTimer: 180,
+        tool: 'delegate_task',
+        hairColor: '#1E293B',
+        shirtColor: '#3B82F6',
+        pantsColor: '#1E293B',
+        accessory: 'tie',
+        walkAnim: 0,
+        logs: [
+          { time: '11:02:10', text: 'Prompt roast passed (score: 11/12)' },
+          { time: '11:02:25', text: 'Dispatched 3 parallel subagent workers' },
+          { time: '11:04:15', text: 'Observing telemetry stream' }
+        ]
+      },
+      {
+        id: 'sub-1',
+        name: 'SecOps Chibi',
+        emoji: '🕵️',
+        role: 'Worker: SSRF Auditor',
+        model: 'ag/gemini-3.8-flash',
+        state: 'coding',
+        homeZone: ZONES.SUB1_DESK,
+        gx: 3, gy: 4,
+        targetGx: 3, targetGy: 4,
+        speech: 'Fuzzing WHATWG parser on octal IPs...',
+        speechTimer: 150,
+        tool: 'terminal: phpunit',
+        hairColor: '#64748B',
+        shirtColor: '#06B6D4',
+        pantsColor: '#0F172A',
+        accessory: 'glasses',
+        walkAnim: 0,
+        logs: [
+          { time: '11:02:30', text: 'Running test: SsrfObfuscationTest' },
+          { time: '11:03:12', text: 'Bypass reproduced on 017700000001' },
+          { time: '11:04:10', text: 'Testing WHATWG IP parser spec' }
+        ]
+      },
+      {
+        id: 'sub-2',
+        name: 'QA Chibi',
+        emoji: '🎮',
+        role: 'Worker: Playwright E2E',
+        model: 'ag/gemini-3.8-flash',
+        state: 'coding',
+        homeZone: ZONES.SUB2_DESK,
+        gx: 9, gy: 4,
+        targetGx: 9, targetGy: 4,
+        speech: 'Running browser test journeys...',
+        speechTimer: 190,
+        tool: 'browser_exec',
+        hairColor: '#D97706',
+        shirtColor: '#8B5CF6',
+        pantsColor: '#1E293B',
+        accessory: 'headphones',
+        walkAnim: 0,
+        logs: [
+          { time: '11:02:30', text: 'Booting headless chromium session' },
+          { time: '11:03:45', text: 'Journey 1-6 passed: login cache OK' },
+          { time: '11:04:22', text: 'Testing CSP nonce validity on inline script' }
+        ]
+      },
+      {
+        id: 'sub-3',
+        name: 'Frontend Chibi',
+        emoji: '🎨',
+        role: 'Worker: CSP Refactor',
+        model: 'oc-hlv/deepseek-4.1-flash',
+        state: 'done',
+        homeZone: ZONES.SUB3_DESK,
+        gx: 6, gy: 9,
+        targetGx: 6, targetGy: 9,
+        speech: 'CSP refactor complete! All clean 🎉',
+        speechTimer: 200,
+        tool: 'patch',
+        hairColor: '#475569',
+        shirtColor: '#10B981',
+        pantsColor: '#1E293B',
+        accessory: 'none',
+        walkAnim: 0,
+        logs: [
+          { time: '11:02:30', text: 'Targeted ContentSecurityPolicy.php' },
+          { time: '11:03:55', text: 'Injected per-request nonce in middleware' },
+          { time: '11:04:05', text: 'Verified E2E test passed cleanly!' }
+        ]
+      }
+    ];
+
+    const FURNITURE = [
+      { type: 'desk', gx: 6, gy: 6, isBoss: true, color: '#3E2723' },
+      { type: 'desk', gx: 3, gy: 4, isBoss: false, color: '#BA8650' },
+      { type: 'desk', gx: 9, gy: 4, isBoss: false, color: '#BA8650' },
+      { type: 'desk', gx: 6, gy: 9, isBoss: false, color: '#BA8650' },
+      { type: 'meeting_table', gx: 10, gy: 10 },
+      { type: 'server_rack', gx: 11, gy: 2 },
+      { type: 'server_rack', gx: 12, gy: 2 },
+      { type: 'espresso_machine', gx: 2, gy: 10 },
+      { type: 'water_cooler', gx: 3, gy: 11 },
+      { type: 'sofa', gx: 2, gy: 8 },
+      { type: 'whiteboard', gx: 5, gy: 1 },
+      { type: 'plant', gx: 1, gy: 1 },
+      { type: 'plant', gx: 12, gy: 12 },
+      { type: 'plant', gx: 1, gy: 12 }
+    ];
+
+    function drawFloor() {
+      for (let y = 0; y < GRID_SIZE; y++) {
+        for (let x = 0; x < GRID_SIZE; x++) {
+          const pt = gridToScreen(x, y);
+          const isCarpet = (x >= 4 && x <= 8 && y >= 4 && y <= 8);
+          const isWarRoom = (x >= 9 && y >= 9);
+
+          ctx.beginPath();
+          ctx.moveTo(pt.x, pt.y);
+          ctx.lineTo(pt.x + (TILE_W / 2) * zoom, pt.y + (TILE_H / 2) * zoom);
+          ctx.lineTo(pt.x, pt.y + TILE_H * zoom);
+          ctx.lineTo(pt.x - (TILE_W / 2) * zoom, pt.y + (TILE_H / 2) * zoom);
+          ctx.closePath();
+
+          if (isWarRoom) {
+            ctx.fillStyle = (x + y) % 2 === 0 ? '#1E2538' : '#1A2030';
+          } else if (isCarpet) {
+            ctx.fillStyle = (x + y) % 2 === 0 ? '#313745' : '#2C3240';
+          } else {
+            ctx.fillStyle = (x + y) % 2 === 0 ? '#2A2E38' : '#242832';
+          }
+          ctx.fill();
+
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.04)';
+          ctx.lineWidth = 1;
+          ctx.stroke();
+        }
+      }
+
+      // War Room Glass Divider Wall
+      const gwStart = gridToScreen(9, 8.8);
+      const gwEnd = gridToScreen(13, 8.8);
+      ctx.strokeStyle = 'rgba(56, 189, 248, 0.4)';
+      ctx.lineWidth = 3 * zoom;
+      ctx.beginPath();
+      ctx.moveTo(gwStart.x, gwStart.y - 32 * zoom);
+      ctx.lineTo(gwEnd.x, gwEnd.y - 32 * zoom);
+      ctx.stroke();
+
+      ctx.fillStyle = 'rgba(56, 189, 248, 0.1)';
+      ctx.beginPath();
+      ctx.moveTo(gwStart.x, gwStart.y);
+      ctx.lineTo(gwEnd.x, gwEnd.y);
+      ctx.lineTo(gwEnd.x, gwEnd.y - 32 * zoom);
+      ctx.lineTo(gwStart.x, gwStart.y - 32 * zoom);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    function drawFurniture(item, frame) {
+      const pt = gridToScreen(item.gx, item.gy);
+      const s = zoom;
+
+      if (item.type === 'desk') {
+        ctx.fillStyle = item.color;
+        ctx.fillRect(pt.x - 22 * s, pt.y - 18 * s, 44 * s, 16 * s);
+
+        ctx.fillStyle = '#111827';
+        ctx.fillRect(pt.x - 20 * s, pt.y - 2 * s, 4 * s, 18 * s);
+        ctx.fillRect(pt.x + 16 * s, pt.y - 2 * s, 4 * s, 18 * s);
+
+        if (item.isBoss) {
+          ctx.fillStyle = '#0F172A';
+          ctx.fillRect(pt.x - 20 * s, pt.y - 32 * s, 18 * s, 14 * s);
+          ctx.fillRect(pt.x + 2 * s, pt.y - 32 * s, 18 * s, 14 * s);
+          ctx.fillStyle = '#06B6D4';
+          ctx.fillRect(pt.x - 18 * s, pt.y - 30 * s, 14 * s, 10 * s);
+          ctx.fillRect(pt.x + 4 * s, pt.y - 30 * s, 14 * s, 10 * s);
+        } else {
+          ctx.fillStyle = '#0F172A';
+          ctx.fillRect(pt.x - 14 * s, pt.y - 30 * s, 28 * s, 13 * s);
+          ctx.fillStyle = '#38BDF8';
+          ctx.fillRect(pt.x - 12 * s, pt.y - 28 * s, 24 * s, 9 * s);
+        }
+
+        ctx.fillStyle = '#1E293B';
+        ctx.fillRect(pt.x - 8 * s, pt.y - 12 * s, 16 * s, 5 * s);
+        ctx.fillStyle = '#EF4444';
+        ctx.fillRect(pt.x + 12 * s, pt.y - 14 * s, 5 * s, 6 * s);
+        ctx.fillStyle = '#1E2430';
+        ctx.fillRect(pt.x - 10 * s, pt.y + 4 * s, 20 * s, 12 * s);
+      } 
+      else if (item.type === 'meeting_table') {
+        ctx.fillStyle = '#BA8650';
+        ctx.beginPath();
+        ctx.ellipse(pt.x, pt.y - 10 * s, 32 * s, 18 * s, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#854D0E';
+        ctx.lineWidth = 2 * s;
+        ctx.stroke();
+
+        ctx.fillStyle = '#334155';
+        ctx.fillRect(pt.x - 30 * s, pt.y - 14 * s, 10 * s, 10 * s);
+        ctx.fillRect(pt.x + 20 * s, pt.y - 14 * s, 10 * s, 10 * s);
+        ctx.fillRect(pt.x - 5 * s, pt.y - 26 * s, 10 * s, 10 * s);
+        ctx.fillRect(pt.x - 5 * s, pt.y + 6 * s, 10 * s, 10 * s);
+      }
+      else if (item.type === 'server_rack') {
+        ctx.fillStyle = '#111827';
+        ctx.fillRect(pt.x - 14 * s, pt.y - 48 * s, 28 * s, 50 * s);
+        ctx.strokeStyle = '#374151';
+        ctx.lineWidth = 2 * s;
+        ctx.strokeRect(pt.x - 14 * s, pt.y - 48 * s, 28 * s, 50 * s);
+
+        for (let l = 0; l < 8; l++) {
+          const blink = (frame + l * 7) % 30 < 15;
+          ctx.fillStyle = blink ? '#10B981' : '#06B6D4';
+          ctx.fillRect(pt.x - 10 * s, pt.y - 44 * s + l * 6 * s, 4 * s, 3 * s);
+          ctx.fillStyle = (frame + l * 11) % 40 < 20 ? '#F59E0B' : '#334155';
+          ctx.fillRect(pt.x + 6 * s, pt.y - 44 * s + l * 6 * s, 4 * s, 3 * s);
+        }
+      }
+      else if (item.type === 'espresso_machine') {
+        ctx.fillStyle = '#1E293B';
+        ctx.fillRect(pt.x - 16 * s, pt.y - 14 * s, 32 * s, 16 * s);
+        ctx.fillStyle = '#EF4444';
+        ctx.fillRect(pt.x - 8 * s, pt.y - 30 * s, 16 * s, 18 * s);
+        const steamY = (frame % 30) * 0.4 * s;
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+        ctx.fillRect(pt.x - 2 * s, pt.y - 34 * s - steamY, 3 * s, 4 * s);
+      }
+      else if (item.type === 'water_cooler') {
+        ctx.fillStyle = '#E2E8F0';
+        ctx.fillRect(pt.x - 8 * s, pt.y - 20 * s, 16 * s, 20 * s);
+        ctx.fillStyle = '#38BDF8';
+        ctx.beginPath();
+        ctx.ellipse(pt.x, pt.y - 28 * s, 7 * s, 10 * s, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      else if (item.type === 'sofa') {
+        ctx.fillStyle = '#1E293B';
+        ctx.fillRect(pt.x - 26 * s, pt.y - 12 * s, 52 * s, 22 * s);
+        ctx.fillStyle = '#334155';
+        ctx.fillRect(pt.x - 26 * s, pt.y - 24 * s, 52 * s, 14 * s);
+        ctx.fillStyle = '#F59E0B';
+        ctx.fillRect(pt.x - 20 * s, pt.y - 16 * s, 8 * s, 8 * s);
+      }
+      else if (item.type === 'whiteboard') {
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(pt.x - 28 * s, pt.y - 45 * s, 56 * s, 34 * s);
+        ctx.strokeStyle = '#64748B';
+        ctx.lineWidth = 2 * s;
+        ctx.strokeRect(pt.x - 28 * s, pt.y - 45 * s, 56 * s, 34 * s);
+        const colors = ['#FBBF24', '#38BDF8', '#34D399', '#F472B6'];
+        for (let p = 0; p < 8; p++) {
+          ctx.fillStyle = colors[p % 4];
+          ctx.fillRect(pt.x - 22 * s + (p % 4) * 11 * s, pt.y - 40 * s + Math.floor(p / 4) * 12 * s, 6 * s, 6 * s);
+        }
+      }
+      else if (item.type === 'plant') {
+        ctx.fillStyle = '#854D0E';
+        ctx.fillRect(pt.x - 8 * s, pt.y - 8 * s, 16 * s, 12 * s);
+        ctx.fillStyle = '#16A34A';
+        ctx.beginPath();
+        ctx.ellipse(pt.x - 4 * s, pt.y - 20 * s, 10 * s, 12 * s, -0.2, 0, Math.PI * 2);
+        ctx.ellipse(pt.x + 4 * s, pt.y - 24 * s, 12 * s, 14 * s, 0.2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    function drawPixelAgent(agent, frame) {
+      const pt = gridToScreen(agent.gx, agent.gy);
+      const s = zoom;
+
+      // Status Aura Disc
+      ctx.beginPath();
+      ctx.ellipse(pt.x, pt.y, 14 * s, 7 * s, 0, 0, Math.PI * 2);
+      ctx.fillStyle = getStatusColor(agent.state, 0.35);
+      ctx.fill();
+
+      const isMoving = Math.abs(agent.gx - agent.targetGx) > 0.05 || Math.abs(agent.gy - agent.targetGy) > 0.05;
+      const bob = isMoving ? Math.sin(frame * 0.4) * 2 * s : 0;
+      const cy = pt.y - 24 * s + bob;
+
+      // Shoes
+      const legWalk = isMoving ? Math.sin(frame * 0.4) * 3 * s : 0;
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(pt.x - 6 * s + legWalk, cy + 20 * s, 5 * s, 4 * s);
+      ctx.fillRect(pt.x + 1 * s - legWalk, cy + 20 * s, 5 * s, 4 * s);
+
+      // Pants
+      ctx.fillStyle = agent.pantsColor;
+      ctx.fillRect(pt.x - 6 * s, cy + 12 * s, 12 * s, 8 * s);
+
+      // Shirt
+      ctx.fillStyle = agent.shirtColor;
+      ctx.fillRect(pt.x - 8 * s, cy + 2 * s, 16 * s, 11 * s);
+
+      // Tie / Lanyard
+      if (agent.accessory === 'tie') {
+        ctx.fillStyle = '#EF4444';
+        ctx.fillRect(pt.x - 1 * s, cy + 3 * s, 3 * s, 7 * s);
+      } else {
+        ctx.fillStyle = '#38BDF8';
+        ctx.fillRect(pt.x - 3 * s, cy + 2 * s, 6 * s, 2 * s);
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(pt.x - 2 * s, cy + 6 * s, 4 * s, 4 * s);
+      }
+
+      // Hands
+      ctx.fillStyle = '#FFDFC4';
+      if (agent.state === 'coding') {
+        const typeOffset = Math.sin(frame * 0.8) * 2 * s;
+        ctx.fillRect(pt.x - 8 * s + typeOffset, cy + 8 * s, 3 * s, 4 * s);
+        ctx.fillRect(pt.x + 5 * s - typeOffset, cy + 8 * s, 3 * s, 4 * s);
+      } else if (agent.state === 'idle_coffee') {
+        ctx.fillRect(pt.x - 5 * s, cy + 6 * s, 3 * s, 3 * s);
+        ctx.fillStyle = '#EF4444';
+        ctx.fillRect(pt.x - 2 * s, cy + 5 * s, 4 * s, 5 * s);
+      } else if (agent.state === 'done') {
+        ctx.fillRect(pt.x - 10 * s, cy - 2 * s, 3 * s, 5 * s);
+        ctx.fillRect(pt.x + 7 * s, cy - 2 * s, 3 * s, 5 * s);
+      } else {
+        ctx.fillRect(pt.x - 9 * s, cy + 6 * s, 3 * s, 4 * s);
+        ctx.fillRect(pt.x + 6 * s, cy + 6 * s, 3 * s, 4 * s);
+      }
+
+      // Face
+      ctx.fillStyle = '#FFDFC4';
+      ctx.fillRect(pt.x - 7 * s, cy - 10 * s, 14 * s, 12 * s);
+
+      // Eyes
+      ctx.fillStyle = '#0F172A';
+      if (agent.state === 'error') {
+        ctx.fillRect(pt.x - 5 * s, cy - 6 * s, 3 * s, 3 * s);
+        ctx.fillRect(pt.x + 2 * s, cy - 6 * s, 3 * s, 3 * s);
+      } else {
+        ctx.fillRect(pt.x - 4 * s, cy - 6 * s, 2 * s, 3 * s);
+        ctx.fillRect(pt.x + 2 * s, cy - 6 * s, 2 * s, 3 * s);
+      }
+
+      // Blush
+      ctx.fillStyle = '#FB7185';
+      ctx.fillRect(pt.x - 6 * s, cy - 3 * s, 2 * s, 2 * s);
+      ctx.fillRect(pt.x + 4 * s, cy - 3 * s, 2 * s, 2 * s);
+
+      // Glasses
+      if (agent.accessory === 'glasses') {
+        ctx.strokeStyle = '#0F172A';
+        ctx.lineWidth = 1.5 * s;
+        ctx.strokeRect(pt.x - 6 * s, cy - 7 * s, 5 * s, 4 * s);
+        ctx.strokeRect(pt.x + 1 * s, cy - 7 * s, 5 * s, 4 * s);
+      }
+
+      // Hair
+      ctx.fillStyle = agent.hairColor;
+      ctx.fillRect(pt.x - 8 * s, cy - 14 * s, 16 * s, 5 * s);
+      ctx.fillRect(pt.x - 8 * s, cy - 10 * s, 3 * s, 5 * s);
+      ctx.fillRect(pt.x + 5 * s, cy - 10 * s, 3 * s, 5 * s);
+
+      // Headphones
+      if (agent.accessory === 'headphones') {
+        ctx.fillStyle = '#38BDF8';
+        ctx.fillRect(pt.x - 10 * s, cy - 8 * s, 3 * s, 6 * s);
+        ctx.fillRect(pt.x + 7 * s, cy - 8 * s, 3 * s, 6 * s);
+        ctx.fillStyle = '#0F172A';
+        ctx.fillRect(pt.x - 8 * s, cy - 15 * s, 16 * s, 2 * s);
+      }
+
+      // Live Speech Bubble
+      if (agent.speech && agent.speechTimer > 0) {
+        drawSpeechBubble(pt.x, cy - 18 * s, agent.speech);
+      }
+    }
+
+    function drawSpeechBubble(bx, by, text) {
+      const s = zoom;
+      ctx.font = `bold ${Math.round(10 * s)}px var(--font-sans)`;
+      const textW = ctx.measureText(text).width;
+      const pad = 8 * s;
+      const bw = textW + pad * 2;
+      const bh = 20 * s;
+
+      ctx.fillStyle = '#FFFFFF';
+      ctx.beginPath();
+      ctx.roundRect(bx - bw / 2, by - bh, bw, bh, 6 * s);
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.moveTo(bx - 4 * s, by);
+      ctx.lineTo(bx + 4 * s, by);
+      ctx.lineTo(bx, by + 5 * s);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.fillStyle = '#0F172A';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(text, bx, by - bh / 2);
+    }
+
+    function getStatusColor(state, alpha = 1) {
+      if (state === 'coding') return `rgba(6, 182, 212, ${alpha})`;
+      if (state === 'thinking') return `rgba(245, 158, 11, ${alpha})`;
+      if (state === 'meeting') return `rgba(168, 85, 247, ${alpha})`;
+      if (state === 'done') return `rgba(16, 185, 129, ${alpha})`;
+      if (state === 'error') return `rgba(244, 63, 94, ${alpha})`;
+      return `rgba(100, 116, 139, ${alpha})`;
+    }
+
+    let frame = 0;
+    function render() {
+      frame++;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      drawFloor();
+
+      const renderList = [];
+      FURNITURE.forEach(f => renderList.push({ kind: 'furniture', depth: f.gx + f.gy, item: f }));
+
+      agents.forEach(a => {
+        const dx = a.targetGx - a.gx;
+        const dy = a.targetGy - a.gy;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        if (dist > 0.05) {
+          const speed = 0.06;
+          a.gx += (dx / dist) * Math.min(speed, dist);
+          a.gy += (dy / dist) * Math.min(speed, dist);
+          a.walkAnim++;
+        } else {
+          a.gx = a.targetGx;
+          a.gy = a.targetGy;
+        }
+
+        if (a.speechTimer > 0) a.speechTimer--;
+
+        renderList.push({ kind: 'agent', depth: a.gx + a.gy + 0.1, item: a });
+      });
+
+      renderList.sort((a, b) => a.depth - b.depth);
+
+      renderList.forEach(obj => {
+        if (obj.kind === 'furniture') {
+          drawFurniture(obj.item, frame);
+        } else if (obj.kind === 'agent') {
+          drawPixelAgent(obj.item, frame);
+        }
+      });
+
+      requestAnimationFrame(render);
+    }
+
+    canvas.addEventListener('mousedown', e => {
+      isDragging = true;
+      lastMouseX = e.clientX;
+      lastMouseY = e.clientY;
+    });
+
+    window.addEventListener('mouseup', () => { isDragging = false; });
+
+    canvas.addEventListener('mousemove', e => {
+      if (isDragging) {
+        panX += e.clientX - lastMouseX;
+        panY += e.clientY - lastMouseY;
+        lastMouseX = e.clientX;
+        lastMouseY = e.clientY;
+      }
+    });
+
+    canvas.addEventListener('wheel', e => {
+      e.preventDefault();
+      const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
+      zoom = Math.max(0.8, Math.min(2.5, zoom * zoomFactor));
+    });
+
+    canvas.addEventListener('click', e => {
+      const clickX = e.clientX;
+      const clickY = e.clientY;
+
+      for (let a of agents) {
+        const pt = gridToScreen(a.gx, a.gy);
+        const hitDist = Math.hypot(clickX - pt.x, clickY - (pt.y - 18 * zoom));
+        if (hitDist < 28 * zoom) {
+          selectAgent(a);
+          return;
+        }
+      }
+    });
+
+    function selectAgent(agent) {
+      selectedAgent = agent;
+      document.getElementById('insp-name').textContent = agent.name;
+      document.getElementById('insp-role').textContent = `Role: ${agent.role}`;
+      document.getElementById('insp-emoji').textContent = agent.emoji || '🤖';
+
+      const statusEl = document.getElementById('insp-status');
+      statusEl.textContent = agent.state.toUpperCase();
+      statusEl.style.color = getStatusColor(agent.state);
+
+      document.getElementById('insp-zone').textContent = agent.homeZone.name;
+      document.getElementById('insp-model').textContent = agent.model;
+      document.getElementById('insp-tool').textContent = agent.tool;
+      document.getElementById('insp-task').textContent = agent.speech;
+
+      const logContainer = document.getElementById('insp-log');
+      logContainer.innerHTML = '';
+      agent.logs.forEach(log => {
+        const item = document.createElement('div');
+        item.className = 'event-item';
+        item.innerHTML = `<span class="event-time">${log.time}</span><span>${log.text}</span>`;
+        logContainer.appendChild(item);
+      });
+
+      document.getElementById('inspector').classList.remove('hidden');
+
+      const pt = gridToScreen(agent.gx, agent.gy);
+      panX += (window.innerWidth / 2 - pt.x) * 0.5;
+      panY += (window.innerHeight / 2 - pt.y) * 0.5;
+    }
+
+    function closeInspector() {
+      document.getElementById('inspector').classList.add('hidden');
+    }
+
+    function setMode(mode) {
+      document.querySelectorAll('.btn-scenario').forEach(b => b.classList.remove('active'));
+      event.target.classList.add('active');
+
+      if (mode === 'working') {
+        document.getElementById('stat-status').innerHTML = 'Status: <strong style="color:var(--cyan)">Focus Sprint</strong>';
+        agents[0].targetGx = ZONES.BOSS_DESK.gx; agents[0].targetGy = ZONES.BOSS_DESK.gy; agents[0].state = 'coding'; agents[0].speech = 'Reviewing subagent PR telemetry...';
+        agents[1].targetGx = ZONES.SUB1_DESK.gx; agents[1].targetGy = ZONES.SUB1_DESK.gy; agents[1].state = 'coding'; agents[1].speech = 'Fuzzing WHATWG parser on octal IPs...';
+        agents[2].targetGx = ZONES.SUB2_DESK.gx; agents[2].targetGy = ZONES.SUB2_DESK.gy; agents[2].state = 'coding'; agents[2].speech = 'Running Playwright test journeys...';
+        agents[3].targetGx = ZONES.SUB3_DESK.gx; agents[3].targetGy = ZONES.SUB3_DESK.gy; agents[3].state = 'coding'; agents[3].speech = 'Injecting CSP nonces in layout.blade...';
+      }
+      else if (mode === 'standup') {
+        document.getElementById('stat-status').innerHTML = 'Status: <strong style="color:var(--purple)">War Room Standup</strong>';
+        agents[0].targetGx = ZONES.MEETING_TABLE_1.gx; agents[0].targetGy = ZONES.MEETING_TABLE_1.gy; agents[0].state = 'meeting'; agents[0].speech = 'Team, what is the blocker on SSRF?';
+        agents[1].targetGx = ZONES.MEETING_TABLE_2.gx; agents[1].targetGy = ZONES.MEETING_TABLE_2.gy; agents[1].state = 'meeting'; agents[1].speech = 'Octal loopback 017700000001 reproduced!';
+        agents[2].targetGx = ZONES.MEETING_TABLE_3.gx; agents[2].targetGy = ZONES.MEETING_TABLE_3.gy; agents[2].state = 'meeting'; agents[2].speech = 'E2E catches 429 login throttle issue.';
+        agents[3].targetGx = ZONES.MEETING_TABLE_4.gx; agents[3].targetGy = ZONES.MEETING_TABLE_4.gy; agents[3].state = 'meeting'; agents[3].speech = 'CSP safe mode confirmed on Livewire 4!';
+      }
+      else if (mode === 'coffee_break') {
+        document.getElementById('stat-status').innerHTML = 'Status: <strong style="color:var(--amber)">Pantry & Coffee Break</strong>';
+        agents[0].targetGx = ZONES.COFFEE_BAR.gx; agents[0].targetGy = ZONES.COFFEE_BAR.gy; agents[0].state = 'idle_coffee'; agents[0].speech = 'Brewing double espresso ☕';
+        agents[1].targetGx = ZONES.WATER_COOLER.gx; agents[1].targetGy = ZONES.WATER_COOLER.gy; agents[1].state = 'idle_coffee'; agents[1].speech = 'Refilling water bottle 💧';
+        agents[2].targetGx = ZONES.SOFA_LOUNGE.gx; agents[2].targetGy = ZONES.SOFA_LOUNGE.gy; agents[2].state = 'idle_coffee'; agents[2].speech = 'Chilling on sofa, checking Discord 📱';
+        agents[3].targetGx = ZONES.KANBAN_WALL.gx; agents[3].targetGy = ZONES.KANBAN_WALL.gy; agents[3].state = 'idle_coffee'; agents[3].speech = 'Moving sprint ticket to Done! 📋';
+      }
+      else if (mode === 'review') {
+        document.getElementById('stat-status').innerHTML = 'Status: <strong style="color:var(--cyan)">Pair Review at Desk</strong>';
+        agents[0].targetGx = ZONES.BOSS_DESK.gx; agents[0].targetGy = ZONES.BOSS_DESK.gy; agents[0].state = 'coding'; agents[0].speech = 'Reviewing architecture drift gate...';
+        agents[1].targetGx = ZONES.SUB1_DESK.gx; agents[1].targetGy = ZONES.SUB1_DESK.gy; agents[1].state = 'coding'; agents[1].speech = 'Explaining octal parser fix to QA.';
+        agents[2].targetGx = 4; agents[2].targetGy = 4; agents[2].state = 'meeting'; agents[2].speech = 'Looking at your PR diff, looks solid! 👍';
+        agents[3].targetGx = ZONES.SUB3_DESK.gx; agents[3].targetGy = ZONES.SUB3_DESK.gy; agents[3].state = 'coding'; agents[3].speech = 'Refactoring CSS Tailwind classes.';
+      }
+      else if (mode === 'emergency') {
+        document.getElementById('stat-status').innerHTML = 'Status: <strong style="color:var(--rose)">Production Incident!</strong>';
+        agents[0].targetGx = ZONES.BOSS_DESK.gx; agents[0].targetGy = ZONES.BOSS_DESK.gy; agents[0].state = 'error'; agents[0].speech = '🚨 PROD DOWN! Who pushed to main?!';
+        agents[1].targetGx = ZONES.SERVER_BAY.gx; agents[1].targetGy = ZONES.SERVER_BAY.gy; agents[1].state = 'error'; agents[1].speech = 'Checking server blade logs!';
+        agents[2].targetGx = ZONES.SUB2_DESK.gx; agents[2].targetGy = ZONES.SUB2_DESK.gy; agents[2].state = 'error'; agents[2].speech = 'E2E pipeline red: exit code 1';
+        agents[3].targetGx = ZONES.SUB3_DESK.gx; agents[3].targetGy = ZONES.SUB3_DESK.gy; agents[3].state = 'error'; agents[3].speech = 'Reverting commit eb9d8b8!';
+      }
+
+      agents.forEach(a => a.speechTimer = 220);
+    }
+
+    function hireNewAgent() {
+      const count = agents.length;
+      if (count >= 6) { alert('Maksimum 6 dev dalam office simulator.'); return; }
+
+      const newAgent = {
+        id: `sub-${count}`,
+        name: `DevOps Chibi #${count}`,
+        emoji: '⚡',
+        role: `Worker #${count}`,
+        model: 'ag/gemini-3.8-flash',
+        state: 'coding',
+        homeZone: { gx: 3, gy: 8, name: `Workstation #${count}` },
+        gx: 12, gy: 12,
+        targetGx: 3, targetGy: 8,
+        speech: 'Just joined the team! Heading to my desk 🚀',
+        speechTimer: 240,
+        tool: 'terminal',
+        hairColor: '#D97706',
+        shirtColor: '#F59E0B',
+        pantsColor: '#1E293B',
+        accessory: 'none',
+        walkAnim: 0,
+        logs: [{ time: '11:15:00', text: 'New subagent recruited via orchestrator' }]
+      };
+
+      agents.push(newAgent);
+      document.getElementById('stat-active').innerHTML = `Staff: <strong>${agents.length} Pixel Devs</strong>`;
+      selectAgent(newAgent);
+    }
+
+    resizeCanvas();
+    render();
+  </script>
+</body>
+</html>

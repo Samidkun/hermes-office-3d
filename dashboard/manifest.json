@@ -1,0 +1,10 @@
+{
+  "name": "office-3d",
+  "label": "Agent Office",
+  "description": "Retro 2.5D Isometric AI Agent Office & Telemetry Simulator",
+  "version": "1.0.0",
+  "tab": {
+    "hidden": true
+  },
+  "entry": "dist/index.js"
+}
